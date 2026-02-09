@@ -31,25 +31,25 @@ class Message(db.Model):
     channel_id = db.Column(db.Integer, db.ForeignKey('channel.id'))
     timestamp = db.Column(db.DateTime, server_default=db.func.now())
 
-# тестовые данные
-def create_test_data():
+# текстовые каналы
+def create_names_channels():
     if not User.query.first():
         admin = User(username='admin', password='admin')
         db.session.add(admin)
         
-        categories = ['General', 'Gaming', 'Study']
+        categories = ['Backend', 'Frontend', 'Other']
         for cat_name in categories:
             category = Category(name=cat_name)
             db.session.add(category)
             db.session.flush()
             
             channels = []
-            if cat_name == 'General':
-                channels = ['welcome', 'announcements', 'rules']
-            elif cat_name == 'Gaming':
-                channels = ['minecraft', 'valorant', 'cs2']
+            if cat_name == 'Backend':
+                channels = ['Python', 'Flask', 'Django', 'SQLite3']
+            elif cat_name == 'Frontend':
+                channels = ['JavaScript', 'HTML', 'CSS']
             else:
-                channels = ['math', 'programming', 'science']
+                channels = ['reference', 'web', 'C']
                 
             for chan_name in channels:
                 channel = Channel(name=chan_name, category_id=category.id)
@@ -149,5 +149,5 @@ def handle_message(data):
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-        create_test_data()
+        create_names_channels()
     socketio.run(app, debug=True, port=5000)
