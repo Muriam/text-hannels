@@ -90,23 +90,19 @@ function addMessage(user, content, timestamp) {
     container.appendChild(msgDiv);
     container.scrollTop = container.scrollHeight;
     
-    // Добавляем обработчики кликов для новых ссылок и превью
-    setTimeout(() => {
-        const links = msgDiv.querySelectorAll('.message-link');
-        
-        // Превью для первой ссылки
-        if (links.length > 0) {
-            getLinkPreview(links[0].href);
-        }
+    // Получаем все ссылки в этом сообщении
+    const links = msgDiv.querySelectorAll('.message-link');
+    
+    // Для каждой ссылки получаем превью
+    links.forEach(link => {
+        getLinkPreview(link.href, msgDiv);
         
         // Обработчик клика по ссылкам
-        links.forEach(link => {
-            link.addEventListener('click', function(e) {
-                e.stopPropagation();
-                window.open(this.href, '_blank');
-            });
+        link.addEventListener('click', function(e) {
+            e.stopPropagation();
+            window.open(this.href, '_blank');
         });
-    }, 0);
+    });
 }
 
 // Генерация цвета для аватарки
@@ -167,23 +163,26 @@ function formatMessageWithLinks(text) {
     });
 }
 
-// Функция для получения превью
-async function getLinkPreview(url) {
+// Функция для получения превью - теперь принимает messageDiv как параметр
+async function getLinkPreview(url, messageDiv) {
     try {
         const response = await fetch(`/api/preview?url=${encodeURIComponent(url)}`);
         const data = await response.json();
         if (!data.error) {
-            showLinkPreview(data);
+            showLinkPreview(data, messageDiv);
         }
     } catch (error) {
         console.log('Preview error:', error);
     }
 }
 
-// Показ красивого превью под сообщением
-function showLinkPreview(data) {
-    const lastMessage = document.querySelector('.message:last-child');
-    if (!lastMessage) return;
+// Показ красивого превью под сообщением - теперь для конкретного сообщения
+function showLinkPreview(data, messageDiv) {
+    if (!messageDiv) return;
+    
+    // Проверяем, есть ли уже превью в этом сообщении
+    const existingPreview = messageDiv.querySelector('.link-preview');
+    if (existingPreview) return;
     
     // Получаем домен для site_name
     let siteName = 'Ссылка';
@@ -217,7 +216,7 @@ function showLinkPreview(data) {
         </a>
     `;
     
-    lastMessage.appendChild(preview);
+    messageDiv.appendChild(preview);
 }
 
 // Обработчики событий
