@@ -365,3 +365,14 @@ body {
 .link-preview.simple:hover {
     border-color: #72767d;
 }
+
+
+/* Цвет для всех ссылок в сообщениях */
+.message-link {
+    color: lightseagreen;
+    text-decoration: none;
+}
+
+.message-link:hover {
+    text-decoration: underline;
+}
