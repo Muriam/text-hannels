@@ -48,7 +48,7 @@ async function loadMessages(channelId) {
             container.appendChild(emptyMsg);
         } else {
             data.messages.forEach(msg => {
-                addMessage(msg.user, msg.content, msg.timestamp);
+                addMessage(msg.id, msg.user, msg.content, msg.timestamp);
             });
         }
         
@@ -59,8 +59,26 @@ async function loadMessages(channelId) {
     }
 }
 
+// Удаляем сообщение по id (только своё) через API
+async function deleteMessage(messageId) {
+    try {
+        // Делаем HTTP DELETE запрос на backend
+        const response = await fetch(`/api/messages/${messageId}`, {
+            method: 'DELETE',
+        });
+
+        // Если сервер вернул ошибку — показываем в консоли (UI сам обновится через сокеты при успехе)
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            console.error('Ошибка удаления:', data.error || response.status);
+        }
+    } catch (error) {
+        console.error('Ошибка запроса удаления:', error);
+    }
+}
+
 // Добавляем сообщение в чат
-function addMessage(user, content, timestamp) {
+function addMessage(id, user, content, timestamp) {
     const container = document.getElementById('messagesContainer');
     
     // Удаляем сообщение "Пока нет сообщений" если оно есть
@@ -71,12 +89,16 @@ function addMessage(user, content, timestamp) {
     
     const msgDiv = document.createElement('div');
     msgDiv.className = 'message';
+    msgDiv.dataset.messageId = String(id);
     
     const avatarLetter = user.charAt(0).toUpperCase();
     const avatarColor = getAvatarColor(user);
     
     // Используем функцию для форматирования ссылок
     const formattedContent = formatMessageWithLinks(content);
+
+    // Показываем кнопку удаления только под своим сообщением
+    const canDelete = user === username;
     
     msgDiv.innerHTML = `
         <div class="message-header">
@@ -85,6 +107,7 @@ function addMessage(user, content, timestamp) {
             <span class="timestamp">${timestamp}</span>
         </div>
         <div class="message-content">${formattedContent}</div>
+        ${canDelete ? `<button class="delete-message-btn" type="button">Удалить</button>` : ``}
     `;
     
     container.appendChild(msgDiv);
@@ -103,6 +126,15 @@ function addMessage(user, content, timestamp) {
             window.open(this.href, '_blank');
         });
     });
+
+    // Навешиваем обработчик удаления (только если кнопка есть)
+    const deleteBtn = msgDiv.querySelector('.delete-message-btn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            deleteMessage(id);
+        });
+    }
 }
 
 // Генерация цвета для аватарки
@@ -298,7 +330,16 @@ document.addEventListener('DOMContentLoaded', function() {
     // WebSocket события
     socket.on('new_message', function(data) {
         if (currentChannel) {
-            addMessage(data.user, data.content, data.timestamp);
+            addMessage(data.id, data.user, data.content, data.timestamp);
+        }
+    });
+
+    // Событие удаления сообщения — удаляем элемент из DOM
+    socket.on('delete_message', function(data) {
+        const container = document.getElementById('messagesContainer');
+        const msg = container.querySelector(`[data-message-id="${data.id}"]`);
+        if (msg) {
+            msg.remove();
         }
     });
     

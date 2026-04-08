@@ -9,7 +9,9 @@ from bs4 import BeautifulSoup
 
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.urandom(24)
+# Важно: фиксированный SECRET_KEY нужен, чтобы сессии (login) не "слетали" между перезапусками.  
+# Можно переопределить через переменную окружения SECRET_KEY.  
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-me')  # Секрет для подписи cookie-сессии.  
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///chat.db'
 db = SQLAlchemy(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -92,8 +94,8 @@ def login():
             session['user_id'] = user.id
             session['username'] = user.username
             return redirect(url_for('index'))
-        return "Неверные данные"
-    return render_template('login.html')
+        return render_template('login.html', error='Неверные данные')
+    return render_template('login.html', error=None)
 
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -107,8 +109,8 @@ def register():
             db.session.add(user)
             db.session.commit()
             return redirect(url_for('login'))
-        return "Имя уже занято"
-    return render_template('register.html')
+        return render_template('register.html', error='Имя уже занято')
+    return render_template('register.html', error=None)
 
 
 @app.route('/logout')
@@ -145,6 +147,38 @@ def get_messages(channel_id):
         'timestamp': m.timestamp.strftime('%H:%M')
     } for m in messages]}
 
+@app.route('/api/messages/<int:message_id>', methods=['DELETE'])
+def delete_message(message_id):
+    # Проверяем авторизацию, чтобы случайный пользователь не удалял сообщения.  
+    if 'user_id' not in session:  # Если нет сессии — пользователь не вошёл.  
+        return {'error': 'Unauthorized'}, 401  # Возвращаем 401 (не авторизован).  
+
+    # Ищем сообщение в базе по id.  
+    message = Message.query.get(message_id)  # Берём объект Message или None.  
+    if not message:  # Если сообщение не найдено…  
+        return {'error': 'Not found'}, 404  # …возвращаем 404.  
+
+    # Разрешаем удалять только своё сообщение (по user_id из сессии).  
+    if message.user_id != session['user_id']:  # Если сообщение чужое…  
+        return {'error': 'Forbidden'}, 403  # …запрещаем удаление.  
+
+    # Запоминаем channel_id заранее — после удаления объекта он может быть недоступен.  
+    channel_id = message.channel_id  # Канал, где лежит сообщение.  
+
+    # Удаляем запись из базы данных.  
+    db.session.delete(message)  # Помечаем для удаления.  
+    db.session.commit()  # Фиксируем транзакцию.  
+
+    # Рассылаем всем в комнате событие удаления, чтобы UI синхронизировался.  
+    socketio.emit(  # Отправляем событие через Socket.IO.  
+        'delete_message',  # Имя события, которое слушает фронтенд.  
+        {'id': message_id},  # Минимальные данные: id удалённого сообщения.  
+        room=channel_id,  # Комната = id канала (как в join_room).  
+    )  # Закрываем emit.  
+
+    # Возвращаем OK-ответ, чтобы фронтенд мог показать успех.  
+    return {'ok': True, 'id': message_id}  # Короткий JSON результат.  
+
 # WebSocket
 @socketio.on('join')
 def on_join(data):
@@ -162,6 +196,7 @@ def handle_message(data):
     db.session.commit()
     
     emit('new_message', {
+        'id': message.id,
         'content': data['content'],
         'user': session['username'],
         'timestamp': message.timestamp.strftime('%H:%M')
